@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.gym.mapper.CheckinMapper">
+    
+    <!-- 分页查询签到记录 -->
+    <select id="selectCheckinPage" resultType="com.example.gym.dto.CheckinVO">
+        SELECT 
+            c.id,
+            c.member_id,
+            m.name AS member_name,
+            m.phone AS member_phone,
+            c.checkin_time,
+            c.checkout_time,
+            c.status,
+            c.type,
+            c.course_id,
+            co.course_name,
+            c.coach_id,
+            u.username AS coach_name,
+            c.remark,
+            TIMESTAMPDIFF(MINUTE, c.checkin_time, IFNULL(c.checkout_time, NOW())) AS duration
+        FROM checkin c
+        LEFT JOIN member m ON c.member_id = m.id
+        LEFT JOIN course co ON c.course_id = co.id
+        LEFT JOIN user u ON c.coach_id = u.id
+        <where>
+            <if test="memberId != null">
+                AND c.member_id = #{memberId}
+            </if>
+            <if test="coachId != null">
+                AND c.coach_id = #{coachId}
+            </if>
+            <if test="courseId != null">
+                AND c.course_id = #{courseId}
+            </if>
+            <if test="status != null and status != ''">
+                AND c.status = #{status}
+            </if>
+            <if test="type != null and type != ''">
+                AND c.type = #{type}
+            </if>
+            <if test="startTime != null">
+                AND c.checkin_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND c.checkin_time &lt;= #{endTime}
+            </if>
+        </where>
+        ORDER BY c.checkin_time DESC
+    </select>
+    
+    <!-- 查询会员的签到记录 -->
+    <select id="selectMemberCheckins" resultType="com.example.gym.dto.CheckinVO">
+        SELECT 
+            c.id,
+            c.member_id,
+            m.name AS member_name,
+            m.phone AS member_phone,
+            c.checkin_time,
+            c.checkout_time,
+            c.status,
+            c.type,
+            c.course_id,
+            co.course_name,
+            c.coach_id,
+            u.username AS coach_name,
+            c.remark,
+            TIMESTAMPDIFF(MINUTE, c.checkin_time, IFNULL(c.checkout_time, NOW())) AS duration
+        FROM checkin c
+        LEFT JOIN member m ON c.member_id = m.id
+        LEFT JOIN course co ON c.course_id = co.id
+        LEFT JOIN user u ON c.coach_id = u.id
+        WHERE c.member_id = #{memberId}
+        <if test="status != null and status != ''">
+            AND c.status = #{status}
+        </if>
+        ORDER BY c.checkin_time DESC
+    </select>
+    
+    <!-- 统计今日签到人数 -->
+    <select id="countTodayCheckins" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT member_id) 
+        FROM checkin 
+        WHERE DATE(checkin_time) = CURDATE()
+    </select>
+    
+    <!-- 统计当前在馆人数 -->
+    <select id="countCurrentInGym" resultType="java.lang.Long">
+        SELECT COUNT(*) 
+        FROM checkin 
+        WHERE status = 'CHECKED_IN' 
+        AND checkout_time IS NULL
+    </select>
+    
+    <!-- 统计本周签到次数 -->
+    <select id="countWeekCheckins" resultType="java.lang.Long">
+        SELECT COUNT(*) 
+        FROM checkin 
+        WHERE YEARWEEK(checkin_time, 1) = YEARWEEK(NOW(), 1)
+    </select>
+    
+    <!-- 统计课程签到率 -->
+    <select id="calculateCourseCheckinRate" resultType="java.lang.Double">
+        SELECT 
+            CASE 
+                WHEN COUNT(DISTINCT r.member_id) = 0 THEN 0
+                ELSE (COUNT(DISTINCT c.member_id) * 100.0 / COUNT(DISTINCT r.member_id))
+            END AS checkin_rate
+        FROM reservation r
+        LEFT JOIN checkin c ON r.member_id = c.member_id 
+            AND r.course_id = c.course_id
+            AND DATE(c.checkin_time) = DATE(r.reservation_time)
+        WHERE r.course_id = #{courseId}
+        AND r.status = 'APPROVED'
+        AND r.payment_status = 'PAID'
+    </select>
+    
+    <!-- 查询签到排行榜 -->
+    <select id="selectCheckinRanking" resultType="com.example.gym.dto.CheckinRankingVO">
+        SELECT 
+            m.id AS member_id,
+            m.name AS member_name,
+            m.phone AS member_phone,
+            m.level AS member_level,
+            m.avatar AS member_avatar,
+            COUNT(c.id) AS checkin_count
+        FROM member m
+        LEFT JOIN checkin c ON m.id = c.member_id
+        GROUP BY m.id, m.name, m.phone, m.level, m.avatar
+        ORDER BY checkin_count DESC
+        LIMIT 50
+    </select>
+    
+    <!-- 查询会员连续签到天数 -->
+    <select id="countConsecutiveCheckinDays" resultType="java.lang.Integer">
+        SELECT COUNT(DISTINCT DATE(checkin_time)) 
+        FROM (
+            SELECT 
+                checkin_time,
+                DATE_SUB(DATE(checkin_time), INTERVAL (a.rn - 1) DAY) AS group_date
+            FROM (
+                SELECT 
+                    checkin_time,
+                    @row := @row + 1 AS rn
+                FROM checkin, (SELECT @row := 0) AS t
+                WHERE member_id = #{memberId}
+                    AND type = 'GYM'
+                ORDER BY checkin_time DESC
+            ) AS a
+        ) AS b
+        WHERE group_date = CURDATE()
+    </select>
+    
+    <!-- 查询会员本月签到次数 -->
+    <select id="countMonthCheckins" resultType="java.lang.Integer">
+        SELECT COUNT(*) 
+        FROM checkin 
+        WHERE member_id = #{memberId}
+            AND YEAR(checkin_time) = YEAR(CURDATE())
+            AND MONTH(checkin_time) = MONTH(CURDATE())
+    </select>
+    
+    <!-- 查询会员本周签到次数 -->
+    <select id="countWeekCheckinsByMember" resultType="java.lang.Integer">
+        SELECT COUNT(*) 
+        FROM checkin 
+        WHERE member_id = #{memberId}
+            AND YEARWEEK(checkin_time, 1) = YEARWEEK(NOW(), 1)
+    </select>
+    
+</mapper>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.gym.mapper.PrivateCoachingCouponMapper">
+
+    <select id="countUnusedByUserId" resultType="int">
+        SELECT COUNT(*) FROM private_coaching_coupon 
+        WHERE user_id = #{userId} AND status = 0 AND expire_time > NOW()
+    </select>
+
+    <select id="selectUnusedByUserId" resultType="com.example.gym.entity.PrivateCoachingCoupon">
+        SELECT * FROM private_coaching_coupon 
+        WHERE user_id = #{userId} AND status = 0 AND expire_time > NOW()
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>
